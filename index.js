@@ -3,6 +3,7 @@ const multer = require('multer');
 const cors = require('cors');
 const fs = require('fs');
 const axios = require('axios');
+const FormData = require('form-data'); // Only here!
 require('dotenv').config();
 
 const app = express();
@@ -14,20 +15,25 @@ app.post('/transcribe', upload.single('audio'), async (req, res) => {
   const audioPath = req.file.path;
 
   try {
+    // 🔥 Whisper Transcription
+    const formData = new FormData();
+    formData.append('file', fs.createReadStream(audioPath));
+    formData.append('model', 'whisper-1');
+
     const whisperRes = await axios.post(
       'https://api.openai.com/v1/audio/transcriptions',
-      fs.createReadStream(audioPath),
+      formData,
       {
         headers: {
           Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-          'Content-Type': 'multipart/form-data',
+          ...formData.getHeaders(),
         },
-        params: { model: 'whisper-1' },
       }
     );
 
     const transcript = whisperRes.data.text;
 
+    // 🔮 GPT Summarization
     const gptRes = await axios.post(
       'https://api.openai.com/v1/chat/completions',
       {
@@ -46,15 +52,17 @@ app.post('/transcribe', upload.single('audio'), async (req, res) => {
 
     const summary = gptRes.data.choices[0].message.content;
 
+    // 🚀 Respond back to app
     res.json({ transcript, summary });
   } catch (err) {
     console.error(err.response?.data || err.message);
     res.status(500).json({ error: 'Something went wrong.' });
   } finally {
-    fs.unlinkSync(audioPath);
+    fs.unlinkSync(audioPath); // 🧹 Clean up file
   }
 });
 
-app.listen(3000, () => {
-  console.log('🔥 EchoTwin backend running on http://localhost:3000');
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`🔥 EchoTwin backend running on port ${PORT}`);
 });
